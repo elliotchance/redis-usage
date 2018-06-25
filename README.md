@@ -3,25 +3,25 @@ A non-blocking way to count the number of keys or size of Redis key prefixes.
 ```
 Usage of ./redis-usage:
   -count int
-    	SCAN COUNT option (default 10)
+    	SCAN COUNT option. (default 10)
   -db int
-    	redis server database
+    	Redis server database.
+  -dump-limit int
+    	Use DUMP to get key sizes (much slower). If this is zero then DUMP will not be used, otherwise it will take N sizes for each prefix to calculate an average bytes for that key prefix. If you want to measure the sizes for all keys set this to a very large number.
   -host string
-    	redis server host (default "localhost")
+    	Redis server host. (default "localhost")
   -limit int
-    	limit the number of keys scanned
+    	Limit the number of keys scanned.
   -match string
-    	SCAN MATCH option
+    	SCAN MATCH option.
   -port int
-    	redis server port number (default 6379)
+    	Redis server port number. (default 6379)
   -prefixes string
-    	known prefixes to group
+    	You may specify custom prefixes (comma-separated).
   -sleep int
-    	number of milliseconds to wait between reading keys
+    	Number of milliseconds to wait between reading keys.
   -timeout int
     	milliseconds for timeout (default 3000)
   -top int
-    	only show the top number of prefixes
-  -use-dump
-    	use DUMP to get key sizes (much slower)
+    	Only show the top number of prefixes.
 ```
