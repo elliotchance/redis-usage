@@ -23,6 +23,7 @@ var (
 	flagPrefixes  string
 	flagDumpLimit int
 	flagTimeout   int
+	flagSeparator string
 )
 
 var (
@@ -197,9 +198,9 @@ func getPrefix(key string) string {
 		}
 	}
 
-	separator := ":"
-	parts := strings.Split(key, separator)
-	return strings.Join(parts[:len(parts)-1], separator) + ":*"
+	parts := strings.Split(key, flagSeparator)
+
+	return strings.Join(parts[:len(parts)-1], flagSeparator) + flagSeparator + "*"
 }
 
 func getTotalKeys(client *redis.Client) int {
@@ -241,7 +242,8 @@ func parseCLIArgs() {
 		"otherwise it will take N sizes for each prefix to calculate an "+
 		"average bytes for that key prefix. If you want to measure the sizes "+
 		"for all keys set this to a very large number.")
-	flag.IntVar(&flagTop, "timeout", 3000, "milliseconds for timeout")
+	flag.IntVar(&flagTop, "timeout", 3000, "Milliseconds for timeout")
+	flag.StringVar(&flagSeparator, "separator", ":", "Seperator for grouping.")
 
 	flag.Parse()
 }

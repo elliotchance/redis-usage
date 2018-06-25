@@ -18,10 +18,12 @@ Usage of ./redis-usage:
     	Redis server port number. (default 6379)
   -prefixes string
     	You may specify custom prefixes (comma-separated).
+  -separator string
+    	Seperator for grouping. (default ":")
   -sleep int
     	Number of milliseconds to wait between reading keys.
   -timeout int
-    	milliseconds for timeout (default 3000)
+    	Milliseconds for timeout (default 3000)
   -top int
     	Only show the top number of prefixes.
 ```
