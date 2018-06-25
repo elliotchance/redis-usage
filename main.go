@@ -27,6 +27,7 @@ var (
 
 var (
 	groupPrefixes []string
+	prefixes prefixItems
 )
 
 type prefixItems map[string]*prefixItem
@@ -73,6 +74,7 @@ type prefixItem struct {
 
 func check(err error) {
 	if err != nil {
+		printResults()
 		log.Fatal(err)
 	}
 }
@@ -95,7 +97,7 @@ func main() {
 	var err error
 	var keys []string
 
-	prefixes := prefixItems{}
+	prefixes = prefixItems{}
 
 	for {
 		keys, cursor, err = client.Scan(cursor, flagMatch, int64(flagCount)).Result()
@@ -137,7 +139,14 @@ func main() {
 
 	bar.FinishPrint("")
 
-	// Show results
+	printResults()
+}
+
+func printResults() {
+	if prefixes == nil {
+		return
+	}
+
 	for i, data := range prefixes.sortedSlice() {
 		if flagTop > 0 && i >= flagTop {
 			break;
