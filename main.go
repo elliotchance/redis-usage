@@ -12,19 +12,20 @@ import (
 )
 
 var (
-	flagCount     int
-	flagDB        int
-	flagDumpLimit int
-	flagHost      string
-	flagLimit     int
-	flagMatch     string
-	flagPort      int
-	flagPrefixes  string
-	flagReconnect bool
-	flagSeparator string
-	flagSleep     int
-	flagTimeout   int
-	flagTop       int
+	flagCount      int
+	flagDB         int
+	flagDumpLimit  int
+	flagHost       string
+	flagLimit      int
+	flagMatch      string
+	flagPort       int
+	flagPrefixes   string
+	flagReconnect  bool
+	flagSeparator  string
+	flagSleep      int
+	flagTimeout    int
+	flagTop        int
+	flagNoProgress bool
 )
 
 var (
@@ -101,11 +102,9 @@ func reconnect() {
 	client = newClient()
 }
 
-func clientScan(initialCursor uint64, match string, count int64) (keys []string, cursor uint64) {
-	var err error
-
+func clientScan(initialCursor uint64, match string, count int64) ([]string, uint64) {
 	for {
-		keys, cursor, err = client.Scan(initialCursor, match, count).Result()
+		keys, cursor, err := client.Scan(initialCursor, match, count).Result()
 		if didLoseConnection(err) && flagReconnect {
 			reconnect()
 			log.Println(err)
@@ -113,6 +112,8 @@ func clientScan(initialCursor uint64, match string, count int64) (keys []string,
 		}
 
 		check(err)
+
+		return keys, cursor
 	}
 }
 
@@ -135,14 +136,17 @@ func main() {
 	parseCLIArgs()
 
 	reconnect();
-
 	checkServerIsAlive(client)
 
 	dbsize := getTotalKeys(client)
 	if flagLimit > 0 && flagLimit < dbsize {
 		dbsize = flagLimit
 	}
-	bar := pb.StartNew(dbsize)
+
+	var bar *pb.ProgressBar
+	if !flagNoProgress {
+		bar = pb.StartNew(dbsize)
+	}
 
 	// Read keys
 	cursor := uint64(0)
@@ -171,7 +175,9 @@ func main() {
 			}
 		}
 
-		bar.Add(len(keys))
+		if !flagNoProgress {
+			bar.Add(len(keys))
+		}
 
 		if cursor == 0 {
 			break
@@ -189,11 +195,13 @@ func main() {
 	// Since the number of items returned from a cursor is up to the count it's
 	// possible for the progress bar position to be greater than the total (when
 	// using -limit). So just neatly adjust for that...
-	if bar.Get() > bar.Total {
-		bar.SetTotal64(bar.Get())
-	}
+	if !flagNoProgress {
+		if bar.Get() > bar.Total {
+			bar.SetTotal64(bar.Get())
+		}
 
-	bar.FinishPrint("")
+		bar.FinishPrint("")
+	}
 
 	printResults()
 }
@@ -291,10 +299,12 @@ func parseCLIArgs() {
 		"otherwise it will take N sizes for each prefix to calculate an "+
 		"average bytes for that key prefix. If you want to measure the sizes "+
 		"for all keys set this to a very large number.")
-	flag.IntVar(&flagTimeout, "timeout", 3000, "Milliseconds for timeout")
+	flag.IntVar(&flagTimeout, "timeout", 3000, "Milliseconds for timeout.")
 	flag.StringVar(&flagSeparator, "separator", ":", "Separator for grouping.")
 	flag.BoolVar(&flagReconnect, "reconnect", false, "Automatically "+
 		"reconnect to Redis if the connection is lost.")
+	flag.BoolVar(&flagNoProgress, "no-progress", false,
+		"Do not show progress bar.")
 
 	flag.Parse()
 }
