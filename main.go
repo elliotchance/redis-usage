@@ -4,31 +4,33 @@ import (
 	"flag"
 	"fmt"
 	"github.com/go-redis/redis"
-	"log"
 	"gopkg.in/cheggaaa/pb.v1"
+	"log"
+	"sort"
 	"strings"
 	"time"
-	"sort"
 )
 
 var (
-	flagHost      string
-	flagPort      int
-	flagDB        int
-	flagMatch     string
 	flagCount     int
-	flagSleep     int
-	flagLimit     int
-	flagTop       int
-	flagPrefixes  string
+	flagDB        int
 	flagDumpLimit int
-	flagTimeout   int
+	flagHost      string
+	flagLimit     int
+	flagMatch     string
+	flagPort      int
+	flagPrefixes  string
+	flagReconnect bool
 	flagSeparator string
+	flagSleep     int
+	flagTimeout   int
+	flagTop       int
 )
 
 var (
 	groupPrefixes []string
 	prefixes      prefixItems
+	client        *redis.Client
 )
 
 type prefixItems map[string]*prefixItem
@@ -78,26 +80,61 @@ func formatSize(size int64) string {
 	switch {
 	case size < 1024:
 		return fmt.Sprintf("%d bytes", size)
-	case size < 1024 * 1024:
-		return fmt.Sprintf("%.3g KB", float64(size) / 1024)
-	case size < 1024 * 1024 * 1024:
-		return fmt.Sprintf("%.3g MB", float64(size) / (1024 * 1024))
+	case size < 1024*1024:
+		return fmt.Sprintf("%.3g KB", float64(size)/1024)
+	case size < 1024*1024*1024:
+		return fmt.Sprintf("%.3g MB", float64(size)/(1024*1024))
 	default:
-		return fmt.Sprintf("%.3g GB", float64(size) / (1024 * 1024 * 1024))
+		return fmt.Sprintf("%.3g GB", float64(size)/(1024*1024*1024))
 	}
 }
 
 func check(err error) {
 	if err != nil {
 		printResults()
+		panic(err)
 		log.Fatal(err)
+	}
+}
+
+func reconnect() {
+	client = newClient()
+}
+
+func clientScan(initialCursor uint64, match string, count int64) (keys []string, cursor uint64) {
+	var err error
+
+	for {
+		keys, cursor, err = client.Scan(initialCursor, match, count).Result()
+		if didLoseConnection(err) && flagReconnect {
+			reconnect()
+			log.Println(err)
+			continue
+		}
+
+		check(err)
+	}
+}
+
+func clientDump(key string) string {
+	for {
+		result, err := client.Dump(key).Result()
+		if didLoseConnection(err) && flagReconnect {
+			reconnect()
+			log.Println(err)
+			continue
+		}
+
+		check(err)
+
+		return result
 	}
 }
 
 func main() {
 	parseCLIArgs()
 
-	client := newClient()
+	reconnect();
 
 	checkServerIsAlive(client)
 
@@ -109,14 +146,12 @@ func main() {
 
 	// Read keys
 	cursor := uint64(0)
-	var err error
 	var keys []string
 
 	prefixes = prefixItems{}
 
 	for {
-		keys, cursor, err = client.Scan(cursor, flagMatch, int64(flagCount)).Result()
-		check(err)
+		keys, cursor = clientScan(cursor, flagMatch, int64(flagCount))
 
 		for _, key := range keys {
 			prefix := getPrefix(key)
@@ -129,8 +164,7 @@ func main() {
 			prefixes[prefix].count += 1
 
 			if prefixes[prefix].numberOfDumps < flagDumpLimit {
-				result, err := client.Dump(key).Result()
-				check(err)
+				result := clientDump(key)
 
 				prefixes[prefix].totalBytes += len(result)
 				prefixes[prefix].numberOfDumps += 1
@@ -140,11 +174,11 @@ func main() {
 		bar.Add(len(keys))
 
 		if cursor == 0 {
-			break;
+			break
 		}
 
 		if flagLimit > 0 && bar.Get() >= int64(flagLimit) {
-			break;
+			break
 		}
 
 		if flagSleep > 0 {
@@ -171,7 +205,7 @@ func printResults() {
 
 	for i, data := range prefixes.sortedSlice() {
 		if flagTop > 0 && i >= flagTop {
-			break;
+			break
 		}
 
 		if data.numberOfDumps > 0 {
@@ -203,15 +237,30 @@ func getPrefix(key string) string {
 	return strings.Join(parts[:len(parts)-1], flagSeparator) + flagSeparator + "*"
 }
 
-func getTotalKeys(client *redis.Client) int {
-	dbsize, err := client.DbSize().Result()
-	check(err)
+func didLoseConnection(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "i/o timeout")
+}
 
-	return int(dbsize)
+func getTotalKeys(client *redis.Client) int {
+	for {
+		dbsize, err := client.DbSize().Result()
+		if didLoseConnection(err) && flagReconnect {
+			reconnect()
+			log.Println(err)
+			continue
+		}
+
+		check(err)
+
+		return int(dbsize)
+	}
 }
 
 func checkServerIsAlive(client *redis.Client) {
 	_, err := client.Ping().Result()
+
+	// Do not try to reconnect because this one has to pass before we can
+	// continue.
 	check(err)
 }
 
@@ -231,19 +280,21 @@ func parseCLIArgs() {
 	flag.IntVar(&flagDB, "db", 0, "Redis server database.")
 	flag.StringVar(&flagMatch, "match", "", "SCAN MATCH option.")
 	flag.IntVar(&flagCount, "count", 10, "SCAN COUNT option.")
-	flag.IntVar(&flagSleep, "sleep", 0, "Number of milliseconds to wait " +
+	flag.IntVar(&flagSleep, "sleep", 0, "Number of milliseconds to wait "+
 		"between reading keys.")
 	flag.IntVar(&flagLimit, "limit", 0, "Limit the number of keys scanned.")
 	flag.IntVar(&flagTop, "top", 0, "Only show the top number of prefixes.")
-	flag.StringVar(&flagPrefixes, "prefixes", "", "You may specify custom " +
+	flag.StringVar(&flagPrefixes, "prefixes", "", "You may specify custom "+
 		"prefixes (comma-separated).")
 	flag.IntVar(&flagDumpLimit, "dump-limit", 0, "Use DUMP to get key sizes "+
 		"(much slower). If this is zero then DUMP will not be used, "+
 		"otherwise it will take N sizes for each prefix to calculate an "+
 		"average bytes for that key prefix. If you want to measure the sizes "+
 		"for all keys set this to a very large number.")
-	flag.IntVar(&flagTop, "timeout", 3000, "Milliseconds for timeout")
-	flag.StringVar(&flagSeparator, "separator", ":", "Seperator for grouping.")
+	flag.IntVar(&flagTimeout, "timeout", 3000, "Milliseconds for timeout")
+	flag.StringVar(&flagSeparator, "separator", ":", "Separator for grouping.")
+	flag.BoolVar(&flagReconnect, "reconnect", false, "Automatically "+
+		"reconnect to Redis if the connection is lost.")
 
 	flag.Parse()
 }
