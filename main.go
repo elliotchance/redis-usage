@@ -14,6 +14,7 @@ import (
 var (
 	flagHost      string
 	flagPort      int
+    flagPassword  string
 	flagDB        int
 	flagMatch     string
 	flagCount     int
@@ -220,6 +221,7 @@ func newClient() *redis.Client {
 
 	return redis.NewClient(&redis.Options{
 		Addr:        addr,
+        Password:    flagPassword,
 		DB:          flagDB,
 		ReadTimeout: time.Duration(flagTimeout) * time.Millisecond,
 	})
@@ -227,6 +229,7 @@ func newClient() *redis.Client {
 
 func parseCLIArgs() {
 	flag.StringVar(&flagHost, "host", "localhost", "Redis server host.")
+	flag.StringVar(&flagPassword, "password", "", "Redis server password.")
 	flag.IntVar(&flagPort, "port", 6379, "Redis server port number.")
 	flag.IntVar(&flagDB, "db", 0, "Redis server database.")
 	flag.StringVar(&flagMatch, "match", "", "SCAN MATCH option.")

@@ -10,6 +10,8 @@ Usage of ./redis-usage:
     	Use DUMP to get key sizes (much slower). If this is zero then DUMP will not be used, otherwise it will take N sizes for each prefix to calculate an average bytes for that key prefix. If you want to measure the sizes for all keys set this to a very large number.
   -host string
     	Redis server host. (default "localhost")
+  -password string
+        Redis server password. (default: "")
   -limit int
     	Limit the number of keys scanned.
   -match string
